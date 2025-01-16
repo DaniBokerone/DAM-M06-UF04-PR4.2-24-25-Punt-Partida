@@ -376,9 +376,110 @@ const getConversation = async (req, res, next) => {
     }
 };
 
+/**
+ * Envia una frase, y analitza quin sentiment evoca
+ * @route POST /api/chat/sentiment-analysis
+ */
+const sentimentPrompt = async (req, res, next) => {
+    try {
+        const { 
+            conversationId, 
+            prompt, 
+            model = DEFAULT_OLLAMA_MODEL, 
+            stream = false 
+        } = req.body;
+
+        logger.info('Nova sol·licitud de prompt rebuda', {
+            hasConversationId: !!conversationId,
+            model,
+            stream,
+            promptLength: prompt?.length
+        });
+
+        // Validacions inicials
+        if (!prompt?.trim()) {
+            logger.warn('Intent de registrar prompt buit');
+            return res.status(400).json({ message: 'El prompt és obligatori' });
+        }
+
+        // Gestió de la conversa
+        let conversation;
+        if (conversationId) {
+            if (!validateUUID(conversationId)) {
+                logger.warn('ID de conversa invàlid', { conversationId });
+                return res.status(400).json({ message: 'ID de conversa invàlid' });
+            }
+            
+            conversation = await Conversation.findByPk(conversationId);
+            
+            if (!conversation) {
+                logger.info('Creant nova conversa amb ID proporcionat', { conversationId });
+                conversation = await Conversation.create({ id: conversationId });
+            }
+        } else {
+            logger.info('Creant nova conversa sense ID específic');
+            conversation = await Conversation.create();
+        }
+
+        // Gestió del streaming vs no-streaming
+        if (stream) {
+            await handleStreamingResponse(req, res, conversation, prompt, model);
+        } else {
+            const sentimentAnalysisResponse = await handleSentimentAnalysis(prompt, model);
+            
+            // Retornar la resposta
+            res.json({
+                sentiment: sentimentAnalysisResponse.sentiment,
+                confidence: sentimentAnalysisResponse.confidence,
+                conversationId: conversation.id,
+            });
+        }
+    } catch (error) {
+        logger.error('Error en el procés de registre de prompt', {
+            error: error.message,
+            stack: error.stack
+        });
+        next(error);
+    }
+};
+
+/**
+ * Funció que fa el procés d'anàlisi de sentiment
+ * @param {string} prompt - La frase per analitzar el sentiment
+ * @param {string} model - El model d'Ollama per utilitzar
+ * @returns {Object} - Retorna el sentiment  en l'anàlisi
+ */
+async function handleSentimentAnalysis(prompt, model) {
+    const sentimentPrompt = `Donada la seguent oracio: -${prompt}-, analitza el sentiment y retorna una de las seguents opcions: -Positiu-, -Negatiu- o -Neutral-. A més, inclou un valor de confiança entre 0 y 1 a la resposta respuesta. Devuelve esto en el siguiente formato Sentiment: ejemplo`;
+    
+    const response = await generateResponse(sentimentPrompt, { model });
+
+    if (response) {
+        const { sentiment } = parseSentimentResponse(response);
+        return { sentiment };
+    } else {
+        throw new Error('No s\'ha pogut obtenir una resposta vàlida del model');
+    }
+}
+
+/**
+ * Funció per parsejar la resposta del model d'Ollama
+ * @param {string} response - Resposta del model d'Ollama
+ * @returns {Object} - Objecte amb sentiment 
+ */
+function parseSentimentResponse(response) {
+   
+    const sentimentMatch = response.match(/Sentiment: (\w+)/);
+
+    return {
+        sentiment: sentimentMatch ? sentimentMatch[1] : 'Desconegut'
+    };
+}
+
 // Exportació de les funcions públiques
 module.exports = {
     registerPrompt,
     getConversation,
-    listOllamaModels
+    listOllamaModels,
+    sentimentPrompt
 };

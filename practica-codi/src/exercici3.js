@@ -69,6 +69,22 @@ async function queryOllama(base64Image, prompt) {
     }
 }
 
+// Crear el fitxer de sortida si no existeix la carpeta
+async function createOutputFile(result) {
+    const outputDir = path.join(__dirname, 'data');
+    const outputFilePath = path.join(outputDir, 'exercici3_resposta.json');
+
+    try {
+        await fs.access(outputDir);
+    } catch (error) {
+        await fs.mkdir(outputDir, { recursive: true });
+    }
+
+    // Guardem el resultat al fitxer JSON
+    await fs.writeFile(outputFilePath, JSON.stringify(result, null, 2));
+    console.log(`Resultat guardat a: ${outputFilePath}`);
+}
+
 // Funció principal
 async function main() {
     try {
@@ -91,6 +107,7 @@ async function main() {
         }
 
         const animalDirectories = await fs.readdir(imagesFolderPath);
+        const result = { analisis: [] };
 
         // Iterem per cada element dins del directori d'animals
         for (const animalDir of animalDirectories) {
@@ -149,6 +166,12 @@ async function main() {
                         // Si hem rebut resposta, la mostrem
                         console.log(`\nResposta d'Ollama per ${imageFile}:`);
                         console.log(response);
+
+                        // Afegir resposta al resultat
+                        result.analisis.push({
+                            imatge: { nom_fitxer: imageFile },
+                            analisi: response
+                        });
                     } else {
                         // Si no hem rebut resposta vàlida, loguegem l'error
                         console.error(`\nNo s'ha rebut resposta vàlida per ${imageFile}`);
@@ -160,6 +183,9 @@ async function main() {
             console.log(`\nATUREM L'EXECUCIÓ DESPRÉS D'ITERAR EL CONTINGUT DEL PRIMER DIRECTORI`);
             break; // ATUREM L'EXECUCIÓ DESPRÉS D'ITERAR EL CONTINGUT DEL PRIMER DIRECTORI
         }
+
+        // Guardem el resultat al fitxer de sortida
+        await createOutputFile(result);
 
     } catch (error) {
         console.error('Error durant l\'execució:', error.message);

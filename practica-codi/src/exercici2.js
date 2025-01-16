@@ -94,28 +94,58 @@ async function main() {
         const games = await readCSV(gamesFilePath);
         const reviews = await readCSV(reviewsFilePath);
 
-        // Iterem pels jocs
-        console.log('\n=== Llista de Jocs ===');
-        for (const game of games) {
-            console.log(`Codi: ${game.appid}, Nom: ${game.name}`);
+        //Resposta que guardarem
+        const result = {
+            timestamp: new Date().toISOString(),
+            games: []
+        };
+
+        // For per a iterar jocs
+        for (let i = 0; i < 2; i++) {
+            //Recollir joc
+            const game = games[i];
+            //Recollir 2 primeres reviews
+            const gameReviews = reviews.filter(review => review.app_id === game.appid).slice(0, 2);
+            
+            const stats = { positive: 0, negative: 0, neutral: 0, error: 0 };
+
+            // Analisi reseña
+            for (const review of gameReviews) {
+                const sentiment = await analyzeSentiment(review.content);
+                if (sentiment === 'positive') {
+                    stats.positive++;
+                }
+                else if (sentiment === 'negative'){
+                    stats.negative++;
+                } 
+                else if (sentiment === 'neutral'){
+                    stats.neutral++;
+                } 
+                else{
+                    stats.error++;
+                } 
+            }
+
+            result.games.push({
+                appid: game.appid,
+                name: game.name,
+                statistics: stats
+            });
         }
 
-        // Iterem per les primeres 10 reviews i analitzem el sentiment
-        console.log('\n=== Anàlisi de Sentiment de Reviews ===');
-        const reviewsToAnalyze = reviews.slice(0, 2);
-        
-        for (const review of reviewsToAnalyze) {
-            console.log(`\nProcessant review: ${review.id}`);
-            const sentiment = await analyzeSentiment(review.content);
-            console.log(`Review ID: ${review.id}`);
-            console.log(`Joc ID: ${review.app_id}`);
-            console.log(`Contingut: ${review.content.substring(0, 100)}...`);
-            console.log(`Sentiment (Ollama): ${sentiment}`);
-            console.log('------------------------');
+        //Creem la ruta on guardarem la data si no existeix
+        const outputDir = path.join(__dirname, 'data');
+        if (!fs.existsSync(outputDir)) {
+            fs.mkdirSync(outputDir, { recursive: true });
         }
-        console.log(`\nNOMÉS AVALUEM LES DUES PRIMERES REVIEWS`);
-     } catch (error) {
-        console.error('Error durant l\'execució:', error.message);
+
+        //Json amb info
+        const outputFilePath = path.join(outputDir, 'exercici2_resposta.json');
+        fs.writeFileSync(outputFilePath, JSON.stringify(result, null, 2));
+        console.log('Resultat guardat correctament: \n', outputFilePath);
+
+    } catch (error) {
+        console.error('Error durant execucio: \n', error.message);
     }
 }
 
